@@ -1,0 +1,456 @@
+import eventBasedAnimation
+from Tkinter import *
+import random
+import copy
+
+def solitaireInitFn(data):
+    data.deck = []
+    suits='cdhsx'# Four suits and background
+    ranks=13
+    # define the deck
+    for s in suits[:-1]:
+        for r in xrange(ranks):
+            data.deck.append((r+1,s))
+    loadPlayingCardImages(data)
+    # change the deck
+    random.shuffle(data.deck)
+    # distribute the deck to facedown and faceup
+    # and create space for discarded and foundation
+    distributeCards(data)
+    data.margin = 20
+    data.clicked=(None,None)
+    data.highlight = False
+    data.previousCard = ([],"",0)
+    data.cardPile = []
+    data.gameIsOver = False
+
+def distributeCards(data):
+    # 7 piles in facedown and faceup
+    pile = 7
+    data.discardPile = []
+    # four empty foundations
+    data.foundations = [[],[],[],[]]
+    data.faceDown = []
+    n = 0
+    for i in xrange(pile):
+        n += i
+        data.faceDown.append(data.deck[n-i:n])
+    data.faceUp = []
+    # n = 0+1+2+3+4+5+6
+    for i in xrange(pile):
+        data.faceUp.append([data.deck[n+i]])
+    data.residual = data.deck[n+pile:]
+
+def loadPlayingCardImages(data): # Copied from notes
+    cards = 53 # cards 1-52, back, joker1, joker2
+    ranks = 13
+    data.cardImages = [ ]
+    for card in xrange(cards):
+        rank = (card%ranks)+1
+        suit = "cdhsx"[card/ranks]
+        # the name is in accordance with rank and suit
+        filename = "playing-card-gifs/%s%d.gif" % (suit, rank)
+        data.cardImages.append(PhotoImage(file=filename))
+
+def getPlayingCardImage(data, rank, suitName): # Copied from notes
+    suitNames = "cdhsx"
+    ranks = 13
+    # make sure rank and suitName is legal
+    assert(1 <= rank <= ranks)
+    assert(suitName in suitNames)
+    suit = suitNames.index(suitName)
+    # rank*suit+rank-1 is the index of the picture
+    return data.cardImages[ranks*suit + rank - 1]
+
+def solitaireMouseFn(event,data):
+    # The following function returns which type of
+    # card is clicked (in which pile)
+    card = clickedCard(data,event.x,event.y)
+    if card == "deck":
+        moveDeck(data)
+    elif card == "discard":
+        moveDiscard(data)
+    elif card == "faceUp":
+        moveFaceUp(data)
+    elif card == "foundation":
+        moveFoundation(data)
+    elif card == "empty":
+        moveEmpty(data)
+    # No faceDown, because clicking faceDown
+    # cards does not do anything
+    if checkGameOver(data)==True:
+        data.gameIsOver=True
+
+def checkGameOver(data):
+    rank = 13
+    # if all four foundations are filled
+    for i in data.foundations:
+        if len(i)!= rank:
+            return False
+    return True
+
+def moveDeck(data):
+    data.previousCard = ([],'',0)
+    # if the residual is empty, move the discarded to residual
+    if data.residual == []:
+        if data.discardPile != []:
+            data.residual = copy.deepcopy(data.discardPile)
+            data.discardPile = []
+    else: # put the top one of residual on discarded pile
+        data.discardPile.append(data.residual[0])
+        data.residual = data.residual[1:]
+
+def moveDiscard(data):
+    if data.highlight == True: # if the discarded card is selected
+        data.previousCard = ([data.discardPile[-1]],"discard",0)
+    # if the discarded card is not seleccted
+    else: data.previousCard =([],"",0)
+
+def moveFaceUp(data):
+    if data.previousCard == ([],"",0):
+        # If there is no previous selected card
+        # this card is selected to be move elsewhere
+        data.previousCard = (data.cardPile,"faceUp",data.pile)
+    elif moveIsLegal(data): # there is previous card
+        data.highlight=False
+        # move the previous cards to the new locations
+        for c in data.previousCard[0]:
+            data.faceUp[data.pile].append(c)
+        if data.previousCard[1]=="faceUp":
+            for c in data.previousCard[0]:
+                data.faceUp[data.previousCard[2]].remove(c)
+            # when face up cards are all removed,
+            # turn a face down card
+            if (data.faceUp[data.previousCard[2]]==[] and
+                data.faceDown[data.previousCard[2]]!=[]):
+                data.faceUp[data.previousCard[2]]+=\
+                    [data.faceDown[data.previousCard[2]][-1]]
+                data.faceDown[data.previousCard[2]]=\
+                    data.faceDown[data.previousCard[2]][:-1]
+        elif data.previousCard[1]=="discard":
+            data.discardPile.remove(data.previousCard[0][0])
+        elif data.previousCard[1]=="foundation":
+            c = data.previousCard[0][0]
+            data.foundations[data.previousCard[2]].remove(c)
+        data.previousCard=([],"",0)
+    elif moveIsLegal(data)==False:
+        data.previousCard=(data.cardPile,"faceUp",data.pile)
+
+def moveIsLegal(data):
+    # the top of the moved card should be smaller by 1 than the
+    # new place card, and they should have different colors
+    if (data.previousCard[0][0][0]==data.clicked[0]-1 and
+        not (data.previousCard[0][0][1]==data.clicked[1] or
+        data.previousCard[0][0][1]=='c' and data.clicked[1]=='s' or
+        data.previousCard[0][0][1]=='s' and data.clicked[1]=='c' or
+        data.previousCard[0][0][1]=='d' and data.clicked[1]=='h' or
+        data.previousCard[0][0][1]=='h' and data.clicked[1]=='d')):
+        return True
+    else: return False
+
+def moveFoundation(data):
+    if data.previousCard == ([],"",0):
+        if data.foundations[data.pile]!=[]:
+            data.previousCard = ([data.clicked],'foundation',data.pile)
+    elif len(data.previousCard[0])==1:
+        # even if foundation is empty, cards can be moved here
+        # but only one card can be put here per time
+        if ((data.foundations[data.pile]==[] and
+            data.previousCard[0][0][0]==1) or
+            (data.previousCard[0][0][0]==data.clicked[0]+1 and
+            data.previousCard[0][0][1]==data.clicked[1])):
+            data.highlight = False
+            data.foundations[data.pile]+=data.previousCard[0]
+            # previousCard[1] indicates where the card is from
+            if data.previousCard[1]=="discard":
+                data.discardPile=data.discardPile[:-1]
+            elif data.previousCard[1]=="faceUp":
+                data.faceUp[data.previousCard[2]]=\
+                data.faceUp[data.previousCard[2]][:-1]
+                if (data.faceUp[data.previousCard[2]]==[] and
+                data.faceDown[data.previousCard[2]]!=[]):
+                    data.faceUp[data.previousCard[2]]+=\
+                        [data.faceDown[data.previousCard[2]][-1]]
+                    data.faceDown[data.previousCard[2]]=\
+                        data.faceDown[data.previousCard[2]][:-1]
+        data.previousCard=([],"",0)
+    else: data.previousCard=([data.clicked],"foundation",data.pile)
+
+def moveEmpty(data):
+    # move cards to the empty place where there is
+    # no face up or face down pile
+    k = 13
+    if data.previousCard==([],"",0):return
+    if data.previousCard[0][0][0]==k:
+        # only "k" can be moved here
+        for c in data.previousCard[0]:
+            data.faceUp[data.pile].append(c)
+        if data.previousCard[1]=="faceUp":
+            for c in data.previousCard[0]:
+                data.faceUp[data.previousCard[2]].remove(c)
+            if (data.faceUp[data.previousCard[2]]==[] and
+                data.faceDown[data.previousCard[2]]!=[]):
+                data.faceUp[data.previousCard[2]]+=\
+                    [data.faceDown[data.previousCard[2]][-1]]
+                data.faceDown[data.previousCard[2]]=\
+                    data.faceDown[data.previousCard[2]][:-1]
+        elif data.previousCard[1]=="discard":
+            data.discardPile.remove(data.previousCard[0][0])
+        elif data.previousCard[1]=="foundation":
+            c = data.previousCard[0][0]
+            data.foundations[data.previousCard[2]].remove(c)
+        data.previousCard=([],"",0)
+
+def clickedCard(data,x,y):
+    # determine which pile of card is clicked
+    result1 = clickedFaceUp(data,x,y)
+    # False means this pile is not clicked
+    if result1 != False:
+        return result1
+    result2 = clickedFoundation(data,x,y)
+    if result2 != False:
+        return result2
+    result3 = clickedDeck(data,x,y)
+    if result3 != False:
+        return result3
+    result4 = clickedDiscard(data,x,y)
+    if result4 != False:
+        return result4
+    result5 = clickedEmpty(data,x,y)
+    if result5 != False:
+        return result5
+
+def clickedFaceUp(data,x,y):
+    width = data.cardImages[0].width()
+    height = data.cardImages[0].height()
+    margin=20
+    x0 = data.margin
+    y0 = data.margin+height+data.margin
+    for i in xrange(len(data.faceUp)-1,-1,-1):
+        for j in xrange(len(data.faceUp[i])-1,-1,-1):
+            (rank,suitName)=data.faceUp[i][j]
+            x1 = x0+width*i+data.margin*i
+            y1 = y0+margin*j+margin*len(data.faceDown[i])
+            # the binding box of the card
+            if x1<x<x1+width and y1<y<y1+height:
+                if data.clicked==(rank,suitName):
+                    # if one card is clicked twice,
+                    # we think it is not selected
+                   if data.highlight==True:
+                        data.highlight=False
+                        data.previousCard=([],"",0)
+                        return False
+                data.clicked=(rank,suitName)
+                data.pile = i
+                data.highlight=True
+                data.cardPile=data.faceUp[i][j:]
+                return 'faceUp'
+    return False
+
+def clickedFoundation(data,x,y):
+    width = data.cardImages[0].width()
+    height = data.cardImages[0].height()
+    interval = 4
+    x0 = data.margin*interval + width*(interval-1)
+    y0 = data.margin
+    # the y of foundation cards are the same
+    for i in xrange(len(data.foundations)):
+        x1 = x0+width*i+data.margin*i
+        if data.foundations[i] != []:
+            # we can only select the card on the top
+            (rank,suitName)=data.foundations[i][-1]
+            if x1<x<x1+width and y0<y<y0+height:
+                if data.clicked==(rank,suitName):
+                    if data.highlight==True:
+                        data.highlight=False
+                        data.previousCard=([],"",0)
+                        return False
+                data.clicked=(rank,suitName)
+                data.pile=i
+                data.highlight=True
+                return 'foundation'
+        # if the foundation pile is empty, we can still
+        # move other cards to thie place
+        elif x1<x<x1+width and y0<y<y0+height:
+            data.highlight=False
+            data.pile = i
+            return "foundation"
+    return False
+
+def clickedDeck(data,x,y):
+    # when the residual pile is clicked
+    # we discard one card at a time
+    width = data.cardImages[0].width()
+    height = data.cardImages[0].height()
+    x0 = data.margin
+    y0 = data.margin
+    if x0<x<x0+width and y0<y<y0+height:
+        data.highlight=False
+        return "deck"
+    else: return False
+
+def clickedDiscard(data,x,y):
+    # there is only one binding box
+    width = data.cardImages[0].width()
+    height = data.cardImages[0].height()
+    if data.discardPile != []:
+        (rank,suitName)=data.discardPile[-1]
+        x1 = data.margin*2+width
+        y1 = data.margin
+        if x1<x<x1+width and y1<y<y1+height:
+                if data.clicked==(rank,suitName):
+                    if data.highlight==True:
+                        # if a card is clicked twice
+                        # we deselect it
+                        data.highlight=False
+                        data.previousCard=([],"",0)
+                        return "discard"
+                    data.highlight=False
+                    return False
+                data.clicked=(rank,suitName)
+                data.highlight=True
+                return 'discard'
+    return False
+
+def clickedEmpty(data,x,y):
+    # there is no card here, but if this place
+    # is clicked, other cards can be moved here
+    width = data.cardImages[0].width()
+    height = data.cardImages[0].height()
+    pile = 7
+    x0 = data.margin
+    y0 = data.margin+height+data.margin
+    for i in xrange(pile):
+        x1 = x0+width*i+data.margin*i
+        if (x1<x<x1+width and y0<y<y0+height and
+            data.faceUp[i]==[] and data.faceDown[i]==[]):
+            data.pile=i
+            return "empty"
+    else: return False
+
+def solitaireDrawFn(canvas,data):
+    # if the game is over, print the result
+    if data.gameIsOver == True:
+        text = "Congratulations! You win!"
+        canvas.create_text(data.width/2.0,data.height/2.0,text = text,
+                           anchor = CENTER,font = "Arial 36 bold")
+    # when the game is not over, draw the cards
+    else:
+        drawFrame(canvas,data)
+        drawPile(canvas,data)
+        drawDiscard(canvas,data)
+        drawFoundation(canvas,data)
+        drawFaceDown(canvas,data)
+        drawFaceUp(canvas,data)
+
+def drawFrame(canvas,data):
+    # when there are no cards
+    # still draw rectangles
+    # except the discarded pile
+    width = data.cardImages[0].width()
+    height = data.cardImages[0].height()
+    x1 = data.margin
+    y1 = data.margin
+    # the residual pile
+    canvas.create_rectangle(x1,y1,x1+width,y1+height)
+    interval = 4
+    pile = 4
+    x2 = data.margin*interval + width*(interval-1)
+    # the foundation pile
+    for i in xrange(pile):
+        canvas.create_rectangle(x2+i*width+i*data.margin,y1,
+                                x2+(i+1)*width+i*data.margin,y1+height)
+    y2 = y1+height+data.margin
+    pile = 7
+    # the face up and face down pile
+    for i in xrange(pile):
+        canvas.create_rectangle(x1+i*width+i*data.margin,y2,
+                                x1+(i+1)*width+i*data.margin,y2+height)
+
+def drawPile(canvas,data):
+    # the residual pile is shown by the back of a card
+    if data.residual != []:
+        image = data.cardImages[-1]
+        x = data.margin
+        y = data.margin
+        canvas.create_image(x,y,anchor=NW,image=image)
+
+def drawDiscard(canvas,data):
+    # we only draw the top card
+    width = data.cardImages[0].width()
+    height = data.cardImages[0].height()
+    border = 5
+    # the border is used to highlight the selected card
+    if data.discardPile != []:
+        (rank,suitName)=data.discardPile[-1]
+        image=getPlayingCardImage(data,rank,suitName)
+        x = data.margin*2+width
+        y = data.margin
+        canvas.create_image(x,y,anchor=NW,image=image)
+        if data.clicked == (rank,suitName) and data.highlight==True:
+            canvas.create_rectangle(x,y,x+width,y+height,width=border)
+
+def drawFoundation(canvas,data):
+    # we only draw the top card
+    width = data.cardImages[0].width()
+    height = data.cardImages[0].height()
+    interval = 4
+    border = 5
+    # the border is used to highlight the selected card
+    x = data.margin*interval + width*(interval-1)
+    y = data.margin
+    for i in xrange(len(data.foundations)):# 4 piles
+        if data.foundations[i] != []:
+            (rank,suitName)=data.foundations[i][-1]
+            image=getPlayingCardImage(data,rank,suitName)
+            canvas.create_image(x+i*width+i*data.margin,y,anchor=NW,
+                                image=image)
+            if (data.clicked == (rank,suitName) and
+                    data.highlight==True):
+                canvas.create_rectangle(x+i*width+i*data.margin,y,
+                    x+i*width+i*data.margin+width,y+height,width=border)
+
+def drawFaceDown(canvas,data):
+    # the only image is the back of the card
+    width = data.cardImages[0].width()
+    height = data.cardImages[0].height()
+    margin = 20
+    image = data.cardImages[-1]
+    x0 = data.margin
+    y0 = data.margin+height+data.margin
+    # draw cards from the top to the bottom
+    for i in xrange(len(data.faceDown)):
+        for j in xrange(len(data.faceDown[i])):
+            x = x0+width*i+data.margin*i
+            y = y0+margin*j
+            canvas.create_image(x,y,anchor=NW,image=image)
+
+def drawFaceUp(canvas,data):
+    width = data.cardImages[0].width()
+    height = data.cardImages[0].height()
+    margin = 20
+    border = 5
+    x0 = data.margin
+    y0 = data.margin+height+data.margin
+    # the cards are drawn from the top to the bottom
+    for i in xrange(len(data.faceUp)):
+        for j in xrange(len(data.faceUp[i])):
+            (rank,suitName)=data.faceUp[i][j]
+            # we need to find the image of the card
+            image = getPlayingCardImage(data,rank,suitName)
+            x = x0+width*i+data.margin*i
+            y = y0+margin*j+margin*len(data.faceDown[i])
+            canvas.create_image(x,y,anchor=NW,image=image)
+            if data.clicked == (rank,suitName) and data.highlight==True:
+                canvas.create_rectangle(x,y,x+width,y+height,width=border)
+
+def playSolitaire():
+    # there is only the run function
+    eventBasedAnimation.run(
+    initFn=solitaireInitFn,
+    mouseFn=solitaireMouseFn,
+    drawFn=solitaireDrawFn,
+    width = 700, height = 800,
+    )
+
+playSolitaire()
