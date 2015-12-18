@@ -1,0 +1,225 @@
+import eventBasedAnimation
+from Tkinter import *
+import random
+import copy
+
+def myInitFnData(data):
+    # Store the shape of the pieces
+    iPiece = [[ True,  True,  True,  True]]
+    jPiece = [[ True, False, False ],[ True, True,  True]]
+    lPiece = [[ False, False, True],[ True,  True,  True]]
+    oPiece = [[ True, True],[ True, True]]
+    sPiece = [[ False, True, True],[ True,  True, False ]]
+    tPiece = [[ False, True, False ],[ True,  True, True]]
+    zPiece = [[ True,  True, False ],[ False, True, True]]
+    tetrisPieces = [iPiece, jPiece, lPiece, oPiece, sPiece, tPiece, zPiece]
+    tetrisPieceColors = ["red", "yellow", "magenta", "pink", "cyan",
+                          "green", "orange"]
+    data.tetrisPieces = tetrisPieces
+    data.tetrisPieceColors = tetrisPieceColors
+    # define the falling piece
+    data.fallingPiece = []
+    data.fallingPieceColor = ""
+    # define the position of the falling piece
+    data.fallingPieceRow = 0
+    data.fallingPieceCol = 0
+
+def tetrisInitFn(data):
+    # Set the initial conditions
+    data.board = []
+    data.emptyColor = "blue"
+    # define the empty board
+    for row in xrange(data.rows):
+        data.board += [[data.emptyColor]*data.cols]
+    # call the following function to store data
+    myInitFnData(data)
+    data.score = 0 # The initial score
+    data.isGameOver = False # the initial value is false,
+    # so that the game will not end at the beginning
+    newFallingPiece(data) # at first there is a random piece at the top
+
+def drawCell(canvas,row,col,color,data):
+    # the position of the cell
+    left = data.margin + col*data.cellWidth
+    top = data.margin + row*data.cellWidth
+    # draw two rectangles, so that it looks like one with black border
+    canvas.create_rectangle(left,top,left+data.cellWidth,top+data.cellWidth,
+                            fill="black")
+    canvas.create_rectangle(left+1,top+1,left+data.cellWidth-1,
+                            top+data.cellWidth-1,fill=color)
+
+def drawBoard(canvas,data):
+    # draw the board
+    for row in xrange(data.rows):
+        for col in xrange(data.cols):
+            # the string in the bord list decide the color
+            color = data.board[row][col]
+            drawCell(canvas,row,col,color,data)
+
+def newFallingPiece(data):
+    # generate a random number to represent a piece (1 to 7)
+    index = random.randint(0,len(data.tetrisPieces)-1)
+    data.fallingPiece = data.tetrisPieces[index]
+    data.fallingPieceColor = data.tetrisPieceColors[index]
+    # the initial position of the piece
+    data.fallingPieceRow = 0
+    data.fallingPieceCol = data.cols/2 - len(data.fallingPiece[0])/2
+
+def drawFallingPiece(canvas,data):
+    for row in xrange(len(data.fallingPiece)):
+        for col in xrange(len(data.fallingPiece[0])):
+            if data.fallingPiece[row][col]==True: # There is color
+                # position and color
+                drawCell(canvas,data.fallingPieceRow+row,data.fallingPieceCol
+                         +col,data.fallingPieceColor,data)
+
+def drawGame(canvas,data):
+    if data.isGameOver: # is true
+        text = ("Game over! The score is: " + str(data.score) +
+                "\nPress 'r' to restart the game.")
+        font = "Arial 10 bold"
+        color = "black"
+        canvas.create_text(data.width/2.0,data.height/2.0,text = text,
+                           anchor = CENTER, font = font, fill = color)
+    else:
+        # draw the margin
+        canvas.create_rectangle(0,0,data.width,data.height,fill='orange')
+        # draw the board, falling piece and show the score
+        drawBoard(canvas,data)
+        drawFallingPiece(canvas,data)
+        drawScore(canvas,data)
+
+def fallingPieceIsLegal(data):
+    for row in xrange(len(data.fallingPiece)):
+        for col in xrange(len(data.fallingPiece[0])):
+            if data.fallingPiece[row][col]: # is true
+                # position of the falling piece
+                r = data.fallingPieceRow+row
+                c = data.fallingPieceCol+col
+                # if the position is not in the board
+                if not (0<=r<data.rows and 0<=c<data.cols):
+                    return False
+                # if the board is not empty
+                elif data.board[r][c]!="blue":
+                    return False
+    return True
+
+def moveFallingPiece(data,drow,dcol):
+    # change position
+    data.fallingPieceRow += drow
+    data.fallingPieceCol += dcol
+    # if the result is not legal
+    if not fallingPieceIsLegal(data):
+        # change back
+        data.fallingPieceRow -= drow
+        data.fallingPieceCol -= dcol
+        return False
+    # if is legal
+    else: return True
+
+def placeFallingPiece(data):
+    for row in xrange(len(data.fallingPiece)):
+        for col in xrange(len(data.fallingPiece[0])):
+            if data.fallingPiece[row][col]: # is true
+                # position on board
+                r=data.fallingPieceRow+row
+                c=data.fallingPieceCol+col
+                # change the board
+                data.board[r][c]=data.fallingPieceColor
+
+def tetrisStepFn(data):
+    if data.isGameOver:
+        return # stop the stepFn
+    result = moveFallingPiece(data,+1,0)
+    if result == False: # not legal, cannot move down
+        placeFallingPiece(data) # place the piece on board
+        removeFullRows(data) # if there is any full rows
+        newFallingPiece(data) # generate a new piece
+        # if cannot move a piece right after it is generated
+        # end the game
+        if moveFallingPiece(data,+1,0)==False:
+            data.isGameOver=True
+
+def rotateFallingPiece(data):
+    # store the information of the old piece
+    oldPiece = copy.deepcopy(data.fallingPiece)
+    r,c = data.fallingPieceRow,data.fallingPieceCol
+    rows,cols = len(data.fallingPiece),len(data.fallingPiece[0])
+    # create a rotated empty 2D list
+    data.fallingPiece = []
+    for col in xrange(cols):
+        data.fallingPiece += [[False]*rows]
+    # fill the empty list
+    for i in xrange(cols):
+        for j in xrange(rows):
+            data.fallingPiece[i][j] = oldPiece[j][cols-i-1]
+    # calculate the new position
+    data.fallingPieceRow = r + rows/2 - len(data.fallingPiece)/2
+    data.fallingPieceCol = c + cols/2 - len(data.fallingPiece[0])/2
+    # if the rotation is not legal, cancel the change
+    if not fallingPieceIsLegal(data):
+        data.fallingPiece = oldPiece
+        data.fallingPieceRow = r
+        data.fallingPieceCol = c
+
+def rowIsFull(data,oldRow):
+    # determine whether the row contains no "blue"
+    for e in data.board[oldRow]:
+        if e == data.emptyColor:
+            return False
+    return True
+
+def removeFullRows(data):
+    oldRow = data.rows-1
+    newRow = data.rows-1
+    fullRow = 0
+    while oldRow>=0:
+        if not rowIsFull(data,oldRow):
+            # copy the old to the new row
+            for col in xrange(data.cols):
+                data.board[newRow][col]=data.board[oldRow][col]
+            newRow -= 1
+        # if the row is full, do not copy (same as removed)
+        else: fullRow += 1
+        oldRow -= 1
+    data.score += fullRow**2
+    # fill the rest of the new list
+    while newRow>=0:
+        data.board[newRow]=["blue"]*data.cols
+        newRow -= 1
+
+def drawScore(canvas,data):
+    # display the score on the canvas
+    text = "Total score: "+str(data.score)
+    font = "Arial 10 bold"
+    canvas.create_text(data.width/2.0,data.margin/2.0,text = text,
+                       anchor = CENTER,font = font,fill = "black")
+
+def keyPressed(event,data):
+    if (event.keysym == "r"): tetrisInitFn(data) # restart
+    elif data.isGameOver: return # stop the other key events
+    elif (event.keysym == "Down"): moveFallingPiece(data,1,0)
+    elif (event.keysym == "Left"): moveFallingPiece(data,0,-1)
+    elif (event.keysym == "Right"): moveFallingPiece(data,0,1)
+    elif (event.keysym == "Up"): rotateFallingPiece(data)
+
+def playTetris():
+    # some initial values
+    (rows,cols)=(15,10)
+    margin = 20
+    cellWidth = 15
+    # caculate the width and height of the canvas
+    width = cellWidth*cols + 2*margin
+    height = cellWidth*rows + 2*margin
+    eventBasedAnimation.run(
+        initFn=tetrisInitFn,
+        stepFn=tetrisStepFn,
+        keyFn=keyPressed,
+        drawFn=drawGame,
+        timerDelay=400,
+        rows = rows,cols = cols,
+        width = width, height = height,
+        margin = margin,cellWidth = cellWidth
+    )
+
+playTetris()
