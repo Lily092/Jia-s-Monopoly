@@ -1,0 +1,673 @@
+import pygame
+from pygame.locals import *
+from sys import exit
+import random
+
+pygame.init()
+clock = pygame.time.Clock()
+
+screen = pygame.display.set_mode((1375,700), 0, 32)
+pygame.display.set_caption("Jia's Monopoly")
+
+bg = 'bg.jpg'
+background = pygame.image.load(bg).convert()
+
+def initLandImages():
+# The images are downloaded from:
+# https://www.pinterest.com/search/pins/?q=isometric+assets
+    landImages = []
+    landImages.append(pygame.image.load("land.png").convert_alpha())
+    for i in xrange(1,5):
+        fileName = "house%d.png"%(i)
+        landImages.append(pygame.image.load(fileName).convert_alpha())
+    return landImages
+
+def initPeopleImage():
+# The images are downloaded from:
+# https://www.pinterest.com/search/pins/?q=isometric+assets
+    peopleImages = []
+    peopleNames=["Cat","Turtle","Mushroom","Bubble","Bird"]
+    # Different players have different name and pictures
+    for i in xrange(5):
+        fileName="%s.png"%(peopleNames[i])
+        peopleImages.append(pygame.image.load(fileName).convert_alpha())
+    return peopleImages
+
+def initDiceImage():
+    # The dice has six figures
+    # Downloaded from: http://www.58pic.com/sucai/15528418.html
+    diceImages = []
+    for i in xrange(1,7):
+        fileName = "dice%d.png"%(i)
+        diceImages.append(pygame.image.load(fileName).convert_alpha())
+    return diceImages
+
+def initOwnerImages():
+    # Frames of different colors to indicate the owner
+    ownerImages = []
+    for i in xrange(5):
+        fileName = "owner%d.png"%(i)
+        ownerImages.append(pygame.image.load(fileName).convert_alpha())
+    return ownerImages
+
+def initReminderImages():
+    # downloaded from: http://m.redocn.com/shiliangtu/1899060.html
+    reminderImages = []
+    for i in xrange(3):
+        reminderImages.append(pygame.image.load("Reminder%d.png"
+                                                %(i)).convert_alpha())
+    return reminderImages
+
+def initSpecialImages():
+    # four special lands: event, jail, store and new
+    specialImages = []
+    for i in xrange(4):
+        specialImages.append(pygame.image.
+                             load("special%d.png"%(i)).convert_alpha())
+    return specialImages
+
+def calculateRoadPosition(i):
+    # The four corners are not included in the road
+    # They are filled by the special lands
+    tleft = (25,300)
+    tright = (1175,300)
+    ttop = (600,25)
+    tbottom = (600,575)
+    if i/10 == 0:
+        a = tleft[0]+(ttop[0]-tleft[0])/10*i
+        b = tleft[1]+(ttop[1]-tleft[1])/10*i
+    elif i/10 == 1:
+        a = ttop[0]+(tright[0]-ttop[0])/10*(i%10)
+        b = ttop[1]+(tright[1]-ttop[1])/10*(i%10)
+    elif i/10 == 2:
+        a = tright[0]+(tbottom[0]-tright[0])/10*(i%10)
+        b = tright[1]+(tbottom[1]-tright[1])/10*(i%10)
+    else:
+        a = tbottom[0]+(tleft[0]-tbottom[0])/10*(i%10)
+        b = tbottom[1]+(tleft[1]-tbottom[1])/10*(i%10)
+    return (a,b)
+
+def calculatePosition(i):
+    # People will move along the road. They can also stop at special lands
+    tleft = (25,300)
+    tright = (1175,300)
+    ttop = (600,25)
+    tbottom = (600,575)
+    if i/10 == 0:
+        a = tleft[0]+(ttop[0]-tleft[0])/10*i
+        b = tleft[1]+(ttop[1]-tleft[1])/10*i
+    elif i/10 == 1:
+        a = ttop[0]+(tright[0]-ttop[0])/10*(i%10)
+        b = ttop[1]+(tright[1]-ttop[1])/10*(i%10)
+    elif i/10 == 2:
+        a = tright[0]+(tbottom[0]-tright[0])/10*(i%10)
+        b = tright[1]+(tbottom[1]-tright[1])/10*(i%10)
+    else:
+        a = tbottom[0]+(tleft[0]-tbottom[0])/10*(i%10)
+        b = tbottom[1]+(tleft[1]-tbottom[1])/10*(i%10)
+    return (a,b)
+
+def calculateLandPosition(i):
+    # The lands are laid on the outer side of the roads
+    tleft = (25,300)
+    tright = (1175,300)
+    ttop = (600,25)
+    tbottom = (600,575)
+    if i/10 == 0:
+        a = tleft[0]+(ttop[0]-tleft[0])/10*i-50
+        b = tleft[1]+(ttop[1]-tleft[1])/10*i-20
+    elif i/10 == 1:
+        a = ttop[0]+(tright[0]-ttop[0])/10*(i%10)+50
+        b = ttop[1]+(tright[1]-ttop[1])/10*(i%10)-20
+    elif i/10 == 2:
+        a = tright[0]+(tbottom[0]-tright[0])/10*(i%10)+50
+        b = tright[1]+(tbottom[1]-tright[1])/10*(i%10)+55
+    else:
+        a = tbottom[0]+(tleft[0]-tbottom[0])/10*(i%10)-50
+        b = tbottom[1]+(tleft[1]-tbottom[1])/10*(i%10)+55
+    return (a,b)
+
+# load the images of the elements
+roadImage=pygame.image.load("road.png").convert_alpha()
+peopleImages = initPeopleImage()
+landImages = initLandImages()
+diceImages = initDiceImage()
+ownerImages = initOwnerImages()
+reminderImages = initReminderImages()
+specialImages = initSpecialImages()
+cardImage = pygame.image.load("CardsButton.png").convert_alpha()
+
+class Player(object):
+    def __init__(self,position,cash,person):
+        self.name=person
+        # name indicated by an integer, can be accessed in the list of names
+        self.cash=cash
+        self.position=position
+        self.inJail = 0
+        # If people are in jail (inJail > 1), they do not move
+        self.step = 0
+        self.move = False
+        self.drawObject = False
+        self.cards = []
+        self.lands = set()
+        # lands will not duplicate, so we can use a set
+
+    def draw(self,peopleImages):
+        self.image = peopleImages[self.name]
+        x,y = calculatePosition(self.position)
+        screen.blit(self.image,(x,y-30))
+
+class Land(object):
+    def __init__(self,position,landImages):
+        self.level=0
+        # Different level of lands have different images
+        # and can charge different amount of money
+        self.owner=None
+        self.position=position
+        self.build = True
+        self.image = landImages[0]
+
+    def draw(self,landImages):
+        self.image = landImages[self.level]
+        x,y = calculateLandPosition(self.position)
+        screen.blit(self.image,(x,y))
+
+class Road(object): # The road
+    def __init__(self,position):
+        self.position = position
+        self.image = roadImage
+        self.drawn = False
+
+    def draw(self):
+        if self.drawn == False:
+            screen.blit(self.image,self.position)
+            self.drawn=True
+
+class Reminder(object): # reminders of buying and building
+    def __init__(self,type,position):
+        self.type = type
+        self.show = False
+        self.position = position
+        self.status = None
+
+    def draw(self):
+        if self.show == True:
+            image = reminderImages[self.type]
+            screen.blit(image,self.position)
+
+class Special(object): # special lands: event, jail, store, news
+    def __init__(self,type,position):
+        self.type = type
+        self.position = position
+        self.drawn = False
+        self.image = specialImages[self.type]
+
+    def draw(self):
+        if self.drawn == False:
+            screen.blit(self.image,self.position)
+
+class CardSystem(object):
+    def __init__(self):
+        self.show = False # true or false
+        self.type = None # user cards or store
+
+class Text(object): # notification of events
+    def __init__(self,position):
+        self.content = ""
+        self.show = False
+        self.position = position
+
+    def draw(self):
+        if self.show == True:
+             myFont = pygame.font.SysFont("arial", 32)
+             texts = myFont.render(self.content,True,
+                                   (0,0,0), (255, 255, 255))
+             screen.blit(texts, self.position)
+
+# Initial lists of all elements
+positions = []
+for i in xrange(5):
+    positions.append(random.randint(0,39))
+people = []
+lands = []
+roads = []
+reminders = []
+specials = []
+peopleNames=["Cat","Turtle","Mushroom","Bubble","Bird"]
+cards = ["Land Purchasing Card","Charging Card",
+         "Demolishing Card","Construction Card","Pausing Card"]
+
+def drawRoad():
+    # roads list contain the tiles of different positions
+    for i in xrange(1,10):
+        position = calculateRoadPosition(i)
+        roads.append(Road(position))
+    for i in xrange(11,20):
+        position = calculateRoadPosition(i)
+        roads.append(Road(position))
+    for i in xrange(21,30):
+        position = calculateRoadPosition(i)
+        roads.append(Road(position))
+    for i in xrange(31,40):
+        position = calculateRoadPosition(i)
+        roads.append(Road(position))
+    for road in roads:
+        if road != None:
+            road.draw()
+
+def initPeople(num):
+    # append characters to the people list
+    for i in xrange(num):
+        # The positions are generated randomly
+        pos = positions[i]
+        initialCash = 100000
+        people.append(Player(pos,initialCash,i))
+
+def initLand():
+    # There are None elements in the lands list
+    # Because we need the lands positions to correspond to people positions
+    lands.append(None)
+    for i in xrange(1,10):
+        lands.append(Land(i,landImages))
+    lands.append(None)
+    for i in xrange(11,20):
+        lands.append(Land(i,landImages))
+    lands.append(None)
+    for i in xrange(21,30):
+        lands.append(Land(i,landImages))
+    lands.append(None)
+    for i in xrange(31,40):
+        lands.append(Land(i,landImages))
+    lands.append(None)
+
+def drawOwner():
+    for land in lands:
+        if land!=None:
+            if land.owner!= None:
+                # add a frame around the land
+                x,y= calculateLandPosition(land.position)
+                screen.blit(ownerImages[land.owner],(x,y))
+
+def drawSpecial():
+    for special in specials:
+        special.draw()
+
+def initReminders():
+    for i in xrange(3):
+        reminders.append(Reminder(i,(400,200)))
+
+def initSpecials():
+    # The special lands
+    for i in xrange(4):
+        (x,y) = calculatePosition(i*10)
+        specials.append(Special(i,(x,y+10)))
+
+def reminderStatus(index):
+    if reminders[0].show == True: # only when this variable is true
+        if pygame.mouse.get_pressed()[0]:
+            x,y = pygame.mouse.get_pos()
+            if 525<x<625 and 415<y<515: # Yes
+                reminders[0].status = True
+            elif 700<x<850 and 415<y<515: # No
+                reminders[0].status = False
+    if reminders[0].status == True: # Buy the land
+        pos = people[index].position
+        if lands[pos]==None:return # If the land is None, ignore
+        lands[pos].owner = people[index].name
+        people[index].lands.add(pos) # lands are represented by position
+        people[index].cash -= 100 # charged
+        reminders[0].show = False
+        reminders[0].status = None
+    elif reminders[0].status == False:
+        reminders[0].show = False
+        reminders[0].status = None
+
+def reminder1Status(index):
+    if reminders[1].show == True:
+        if pygame.mouse.get_pressed()[0]:
+            x,y = pygame.mouse.get_pos()
+            if 525<x<625 and 500<y<600:
+                reminders[1].status = True
+            elif 700<x<850 and 500<y<600:
+                reminders[1].status = False
+    if reminders[1].status == True: # build on the land
+        pos = people[index].position
+        if lands[pos]==None:return
+        lands[pos].level += 1
+        people[index].cash -= 100
+        reminders[1].show = False
+        reminders[1].status = None
+    elif reminders[1].status == False:
+        reminders[1].show = False
+        # Once a choice is made, the reminder does not show
+        reminders[1].status = None
+
+def reminder2Status(index):
+    pos = people[index].position
+    if reminders[2].show == True:
+        myFont = pygame.font.SysFont("arial", 32)
+        texts = myFont.render("You are charged %d dollars."
+                              %(100*2**lands[pos].level),
+                              True, (0,0,0), (255, 255, 255))
+        screen.blit(texts, (650, 475))
+        if pygame.mouse.get_pressed()[0]:
+            x,y = pygame.mouse.get_pos()
+            if 637<x<737 and 500<y<600:
+                reminders[2].status = True
+    if reminders[2].status == True:
+        if lands[pos]==None:return
+        people[index].cash -= 100*2**lands[pos].level # charge
+        people[lands[pos].owner].cash += 100*2**lands[pos].level
+        reminders[2].show = False
+        reminders[2].status = None
+
+# initialize the elements (put them into lists)
+initLand()
+initPeople(3)
+initReminders()
+initSpecials()
+eventText = Text((650,350))
+cardSys = CardSystem()
+
+def init():
+    # draw the basic elements
+    screen.blit(background, (0,0))
+    drawRoad()
+    drawOwner()
+    drawSpecial()
+    screen.blit(cardImage,(1250,20))
+
+# These three variables will indicate which person, whether this round is over,
+# and how many steps a player takes
+index = 0
+dieLocked = False
+die = 0
+
+def callEvent(index):
+    eventNum = random.randint(1,7) # seven random events
+    # events happen to one person
+    # who stop at the event land
+    if eventNum == 1:
+        people[index].cash -= 1000
+        eventText.content = "You lost 1000 dollars."
+    elif eventNum == 2:
+        people[index].position = 10
+        people[index].inJail = random.randint(1,6)
+        eventText.content = "You will be in jail for %d days."%(
+            people[index].inJail)
+    elif eventNum == 3:
+        people[index].cash = int(people[index].cash*1.2)
+        eventText.content = "The bank gives you a 20% bonus."
+    elif eventNum == 4:
+        people[index].cards.append(cards[random.randint(0,4)])
+        people[index].cards.append(cards[random.randint(0,4)])
+        eventText.content = "The store sent you two cards."
+    elif eventNum == 5:
+        numOfCards = len(people[index].cards)
+        people[index].cards = []
+        people[index].cash += 250*numOfCards
+        eventText.content = "All of your cards were sold."
+    elif eventNum == 6:
+        if len(people[index].lands)>0:
+            posi = people[index].lands.pop()
+            lands[posi].owner = None
+        eventText.content = "You lost one land."
+    else:
+        for land in people[index].lands:
+            if lands[land].level<4:
+                lands[land].level += 1
+        eventText.content = "All of your lands were invested."
+    eventText.show = True
+
+def cardEvent(index,cardType):
+    # when cards are used
+    pos = people[index].position
+    if cardType == "Land Purchasing Card":
+        landPurchase(index,pos)
+    elif cardType == "Charging Card":
+        charge(index)
+    elif cardType == "Demolishing Card":
+        demolish(pos)
+    elif cardType == "Construction Card":
+        construct(pos)
+    elif cardType == "Pausing Card":
+        pause(index)
+    else: return
+
+def landPurchase(index,pos):
+    # the owner will become the person who uses the card
+    if lands[pos] != None:
+        if lands[pos].owner == None:
+            lands[pos].owner = people[index].name
+            people[index].cash -= 400
+            people[index].lands.add(pos)
+        elif lands[pos].owner != people[index].name:
+            people[lands[pos].owner].cash += 400
+            people[lands[pos].owner].lands.remove(pos)
+            lands[pos].owner = people[index].name
+            people[index].cash -= 400
+            people[index].lands.add(pos)
+
+def charge(index):
+    # the person using the card will have more money
+    # other people will have to give money to him or her
+    ind1 = (index+1)%3
+    ind2 = (index+2)%3
+    cash1 = int(people[ind1].cash*0.1)
+    cash2 = int(people[ind2].cash*0.1)
+    people[index].cash = people[index].cash + cash1 + cash2
+    people[ind1].cash -= cash1
+    people[ind2].cash -= cash2
+    peopleNames=["Cat","Turtle","Mushroom","Bubble","Bird"]
+    eventText.content = peopleNames[index] + \
+                        ": charge other people of 10% of their cash"
+    eventText.show = True
+
+def demolish(pos):
+    # the level of the current land is decreased by 1
+    if lands[pos]!=None:
+        if lands[pos].level > 0:
+            lands[pos].level -= 1
+
+def construct(pos):
+    # The level of the current land is increased by 1
+    if lands[pos]!= None:
+        if lands[pos].level < 4:
+            lands[pos].level += 1
+
+def pause(index):
+    # Other people will stop at their position for 5 rounds
+    ind1 = (index+1)%3
+    ind2 = (index+2)%3
+    people[ind1].inJail = 5
+    people[ind2].inJail = 5
+
+def cardSystem(index):
+    # When the user want to use his or her cards
+    if cardSys.show == True and cardSys.type == "User":
+        if people[index].cards == []:
+            cardSys.show == False
+            eventText.content = "No cards."
+            eventText.show = True
+            return
+        cardImage = pygame.image.load("cardBG.png").convert()
+        myFont = pygame.font.SysFont("arial", 32)
+        texts = myFont.render("%s: Please choose the card to use"%(
+            peopleNames[index]),True, (0,0,0), (255, 255, 255))
+        screen.blit(texts, (450, 200))
+        for i in xrange(len(people[index].cards)):
+            x = 200 + i%8 * 120
+            y = 300 + i/8 * 60
+            screen.blit(cardImage,(x,y))
+            cardType = people[index].cards[i]
+            anotherFont = pygame.font.SysFont("arial",16)
+            cardName = anotherFont.render(cardType,True,(0,0,0))
+            # show the cards
+            screen.blit(cardName,(x+10,y+5))
+            if pygame.mouse.get_pressed()[0]:
+                a,b = pygame.mouse.get_pos()
+                if x<a<x+100 and y<b<y+50:
+                    cardEvent(index,cardType)
+                    people[index].cards.remove(cardType)
+                    cardSys.show = False
+                    cardSys.type = None
+                    return
+
+def stop(index,dieLocked,die):
+    # when inJail is not 0
+    eventText.content = "You will be in jail for %d days."%(people
+                                                                [index].inJail)
+    eventText.show = True
+    if pygame.mouse.get_pressed()[0]:
+        x,y = pygame.mouse.get_pos()
+        if x<100 and y > 600:
+            eventText.show = False
+            people[index].inJail -= 1
+            index = (index+1)%3
+    return index,dieLocked,die
+
+def shop(index):
+    # when players stop at the store, they can buy cards (as many as they want)
+    # 500 dollars for each card
+    if cardSys.show == True and cardSys.type == "Shop":
+        cardImage = pygame.image.load("cardBG.png").convert()
+        myFont = pygame.font.SysFont("arial", 32)
+        texts = myFont.render("%s: Please choose the card to buy. Price:"
+                          "500 dollars each."%(
+                peopleNames[index]),True, (0,0,0), (255, 255, 255))
+        screen.blit(texts, (450, 200))
+        for i in xrange(5):
+            x = 200 + i * 240
+            y = 300
+            screen.blit(cardImage,(x,y))
+            cardType = cards[i]
+            anotherFont = pygame.font.SysFont("arial",16)
+            cardName = anotherFont.render(cardType,True,(0,0,0))
+            screen.blit(cardName,(x+10,y+5))
+            if pygame.mouse.get_pressed()[0]:
+                a,b = pygame.mouse.get_pos()
+                if x<a<x+100 and y<b<y+50:
+                    people[index].cards.append(cardType)
+                    people[index].cash -= 500
+                    eventText.content = "Bought "+ cardType
+                    eventText.show = True
+
+def news():
+    # four random events that happens to everyone
+    eventNum = random.randint(1,4)
+    if eventNum == 1:
+        for person in people:
+            person.cash -= 1000
+        eventText.content = "Everyone lost 1000 dollars."
+    elif eventNum == 2:
+        for person in people:
+            person.cash = int(people[index].cash*1.2)
+        eventText.content = "The bank gives everyone a 20% bonus."
+    elif eventNum == 3:
+        for person in people:
+            person.cards.append(cards[random.randint(0,4)])
+            person.cards.append(cards[random.randint(0,4)])
+        eventText.content = "The store sent everyone two cards."
+    else:
+        for person in people:
+            if len(person.lands)>0:
+                posi = person.lands.pop()
+                lands[posi].owner = None
+        eventText.content = "You lost one land."
+    eventText.show = True
+
+def movePerson(index,dieLocked,die):
+    image = diceImages[die]
+    screen.blit(image,(5,605))
+    if people[index].inJail > 0: # do not move
+        return stop(index,dieLocked,die)
+    if dieLocked == False:
+        if pygame.mouse.get_pressed()[0]:
+            x,y = pygame.mouse.get_pos()
+            if x>1270 and y < 110: # use the cards
+                cardSys.show = True
+                cardSys.type = "User"
+            elif x<100 and y > 600: # toss the dice
+                eventText.show = False
+                cardSys.show = False
+                cardSys.type = None
+                image = diceImages[5]
+                screen.blit(image,(5,605))
+                people[index].step = random.randint(1,6)
+                dieLocked = True
+                die = people[index].step-1
+    if people[index].step>0:
+        people[index].step-=1
+        people[index].position = (people[index].position+1)%40
+        if people[index].step==0: # Stop
+            chargeOrBuild(index)
+            index = (index+1)%3
+            dieLocked = False
+    return index,dieLocked,die
+
+def chargeOrBuild(index):
+    pos = people[index].position
+    if lands[pos]==None: # special lands
+        if pos == 0:
+            callEvent(index)
+        elif pos == 10:
+            for person in people:
+                person.inJail = 0
+            eventText.content = "All prisoners are released."
+            eventText.show = True
+        elif pos == 20:
+            cardSys.show = True
+            cardSys.type = "Shop"
+        else: news()
+        return
+    if lands[pos].owner != None:
+        if lands[pos].owner != people[index].name: # be charged
+            reminders[2].show == True
+            people[index].cash -= 100*2**lands[pos].level
+            people[lands[pos].owner].cash += 100*2**lands[pos].level
+            eventText.content = "You are charged with %d dollars."%(
+                100*2**lands[pos].level)
+            eventText.show = True
+        else: # can build on the land
+            if lands[pos].level<4:
+                if reminders[1].show == False:
+                    reminders[1].show = True
+    else: # can buy the land
+        if reminders[0].show == False:
+            reminders[0].show = True
+
+while True:
+    for event in pygame.event.get():
+        if event.type == QUIT:
+            exit()
+    clock.tick(7) # so that the movements will be slower
+    init()
+    cardSystem(index) # if the cardSys.show == True, show the cards
+    index,dieLocked,die = movePerson(index,dieLocked,die) # move
+    reminderStatus((index-1)%3)
+    reminder1Status((index-1)%3)
+    reminder2Status((index-1)%3)
+    # draw some elements (will not be covered by background)
+    for land in lands:
+        if land!=None:land.draw(landImages)
+    for player in people:
+        player.draw(peopleImages)
+    for reminder in reminders:
+        if reminder.show:
+            reminder.draw()
+    shop(index-1) # draw the shops
+    peopleNames=["Cat","Turtle","Mushroom","Bubble","Bird"]
+    myFont = pygame.font.SysFont("arial", 32)
+    texts = myFont.render(peopleNames[(index-1)%3]+" Cash: "
+                          +str(people[(index-1)%3].cash),
+                          True, (0,0,0), (255, 255, 255))
+    # winning condition
+    if people[index].cash >= 140000:
+        eventText.content = peopleNames[index]+" wins!"
+        eventText.show = True
+    # show the notification texts
+    if eventText.show == True:
+        eventText.draw()
+    screen.blit(texts, (20, 20))
+    pygame.display.update()
+
